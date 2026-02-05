@@ -1,0 +1,103 @@
+{
+  "name": "novel-reader-statusbar",
+  "displayName": "Novel Reader - StatusBar",
+  "description": "在VS Code状态栏中阅读小说，支持分页、章节跳转和隐藏模式",
+  "version": "1.0.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Novel Reader",
+      "properties": {
+        "novelReader.filePath": {
+          "type": "string",
+          "default": "",
+          "description": "小说文件的绝对路径（支持 .txt 文件）"
+        },
+        "novelReader.charsPerPage": {
+          "type": "number",
+          "default": 20,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "状态栏每页显示的字符数"
+        },
+        "novelReader.chapterRegex": {
+          "type": "string",
+          "default": "^第[0-9一二三四五六七八九十百千]+[章回节].*$",
+          "description": "章节标题的正则表达式（用于解析目录）"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "novelReader.selectFile",
+        "title": "Novel Reader: 选择小说文件"
+      },
+      {
+        "command": "novelReader.nextPage",
+        "title": "Novel Reader: 下一页"
+      },
+      {
+        "command": "novelReader.prevPage",
+        "title": "Novel Reader: 上一页"
+      },
+      {
+        "command": "novelReader.show",
+        "title": "Novel Reader: 显示文本"
+      },
+      {
+        "command": "novelReader.hide",
+        "title": "Novel Reader: 隐藏文本（防止摸鱼被发现）"
+      },
+      {
+        "command": "novelReader.selectChapter",
+        "title": "Novel Reader: 选择章节"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "novelReader.nextPage",
+        "key": "ctrl+alt+right",
+        "mac": "cmd+alt+right"
+      },
+      {
+        "command": "novelReader.prevPage",
+        "key": "ctrl+alt+left",
+        "mac": "cmd+alt+left"
+      },
+      {
+        "command": "novelReader.show",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
+      },
+      {
+        "command": "novelReader.hide",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h"
+      },
+      {
+        "command": "novelReader.selectChapter",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.60.0",
+    "@types/node": "16.x",
+    "eslint": "^8.0.0"
+  }
+}
