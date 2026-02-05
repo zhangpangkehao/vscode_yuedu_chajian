@@ -6,13 +6,14 @@ const path = require('path');
  * 小说阅读器状态
  */
 let novelState = {
-  content: "",           // 完整小说内容
-  chapters: [],          // [{name: "第一章", startPos: 0, endPos: 1000}, ...]
-  currentPage: 0,        // 当前页码（全局）
-  totalPages: 0,         // 总页数
-  currentChapter: 0,     // 当前章节索引
-  isVisible: false,      // 是否显示在状态栏
-  charsPerPage: 20       // 每页字符数
+  content: "",
+  chapters: [],
+  // 核心修改：使用 currentPos (当前字符位置) 替代 currentPage
+  currentPos: 0, 
+  totalPages: 0,
+  currentChapter: 0,
+  isVisible: false,
+  charsPerPage: 20
 };
 
 let statusBarItem;
@@ -144,69 +145,49 @@ function loadNovel(filePath) {
  */
 function parseChapters() {
   const config = vscode.workspace.getConfiguration('novelReader');
-  const chapterRegexStr = config.get('chapterRegex', '^第[0-9一二三四五六七八九十百千]+[章回节].*$');
+  const chapterRegexStr = config.get('chapterRegex', '^\\s*第[0-9一二三四五六七八九十百千]+[章回节].*$');
   
   try {
-    const chapterRegex = new RegExp(chapterRegexStr, 'm');
-    const lines = novelState.content.split(/\r?\n/);
-    
+    // 必须加上 'g' 标志进行全局匹配
+    const chapterRegex = new RegExp(chapterRegexStr, 'gm');
     novelState.chapters = [];
-    let currentPos = 0;
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+    let match;
+    while ((match = chapterRegex.exec(novelState.content)) !== null) {
+      // match.index 是正则匹配到的开始位置（即章节标题的开始）
+      // match[0] 是匹配到的标题文本
       
-      if (chapterRegex.test(line)) {
-        // 找到章节标题
-        if (novelState.chapters.length > 0) {
-          // 设置上一章的结束位置（当前位置，即新章节标题的开始）
-          novelState.chapters[novelState.chapters.length - 1].endPos = currentPos;
-        }
-        
-        // 计算章节内容的起始位置：跳过标题行和后续的空行
-        let contentStartPos = currentPos + lines[i].length + 1; // 先跳过标题行
-        
-        // 继续向后查找，跳过所有空行
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].trim() === '') {
-            // 空行，继续跳过
-            contentStartPos += lines[j].length + 1;
-          } else {
-            // 找到第一个非空行，这是真正的内容开始
-            break;
-          }
-        }
-        
-        novelState.chapters.push({
-          name: line,
-          startPos: contentStartPos, // 从第一个非空行开始
-          endPos: novelState.content.length // 临时值
-        });
+      const titleStart = match.index;
+      const titleLength = match[0].length;
+      
+      // 我们希望跳转后直接看正文，所以位置应该是：标题开始 + 标题长 + 换行符(通常1-2个)
+      // 简单的做法是直接定位到标题结束，后续渲染会处理空格
+      let contentStart = titleStart + titleLength;
+      
+      // 记录章节
+      if (novelState.chapters.length > 0) {
+        // 更新上一章的结束位置
+        novelState.chapters[novelState.chapters.length - 1].endPos = titleStart;
       }
       
-      currentPos += lines[i].length + 1; // +1 for newline
-    }
-    
-    // 如果没有找到章节，创建一个默认章节
-    if (novelState.chapters.length === 0) {
       novelState.chapters.push({
-        name: '全文',
-        startPos: 0,
-        endPos: novelState.content.length
+        name: match[0].trim(),
+        startPos: contentStart, // 这里记录的是标题后的位置
+        endPos: novelState.content.length // 默认为全文末尾
       });
+    }
+
+    // 兜底：如果没有章节
+    if (novelState.chapters.length === 0) {
+      novelState.chapters.push({ name: '全文', startPos: 0, endPos: novelState.content.length });
     } else {
-      // 设置最后一章的结束位置
+      // 修正最后一章结束位置
       novelState.chapters[novelState.chapters.length - 1].endPos = novelState.content.length;
     }
+    
   } catch (error) {
-    // 章节解析失败，静默处理
-    console.error('章节解析失败:', error.message);
-    // 创建默认章节
-    novelState.chapters = [{
-      name: '全文',
-      startPos: 0,
-      endPos: novelState.content.length
-    }];
+    console.error('章节解析失败:', error);
+    novelState.chapters = [{ name: '全文', startPos: 0, endPos: novelState.content.length }];
   }
 }
 
@@ -227,19 +208,26 @@ function recalculatePages() {
  * 获取当前页内容
  */
 function getCurrentPageContent() {
-  if (!novelState.content || novelState.totalPages === 0) {
-    return "请先选择小说文件";
+  if (!novelState.content) return "请先选择小说";
+
+  // 1. 处理位置越界
+  if (novelState.currentPos < 0) novelState.currentPos = 0;
+  if (novelState.currentPos >= novelState.content.length) {
+    novelState.currentPos = novelState.content.length - novelState.charsPerPage;
   }
+
+  const start = novelState.currentPos;
+  // 确保不越界
+  const end = Math.min(start + novelState.charsPerPage, novelState.content.length);
+
+  // 2. 截取内容
+  let text = novelState.content.substring(start, end);
+
+  // 3. 格式化：去除开头的空白字符（关键体验优化：章节跳转后不显示空行）
+  // 注意：如果 text 全是空白，可能需要多读一点，这里简单处理只做展示替换
+  text = text.replace(/\s+/g, ' '); 
   
-  const startPos = novelState.currentPage * novelState.charsPerPage;
-  const endPos = Math.min(startPos + novelState.charsPerPage, novelState.content.length);
-  
-  let pageContent = novelState.content.substring(startPos, endPos);
-  
-  // 移除换行符，用空格替代
-  pageContent = pageContent.replace(/\s+/g, ' ').trim();
-  
-  return pageContent;
+  return text;
 }
 
 /**
@@ -266,15 +254,21 @@ function updateStatusBar() {
     statusBarItem.hide();
     return;
   }
-  
+
+  // 动态计算当前的“页码”用于展示（仅用于展示进度）
+  const currentPageDisplay = Math.floor(novelState.currentPos / novelState.charsPerPage) + 1;
+  const totalPagesDisplay = Math.ceil(novelState.content.length / novelState.charsPerPage);
+
+  // 查找当前章节名称
+  const currentChapter = novelState.chapters.find(ch => 
+    novelState.currentPos >= ch.startPos && novelState.currentPos < ch.endPos
+  ) || novelState.chapters[novelState.chapters.length - 1];
+
   const pageContent = getCurrentPageContent();
-  novelState.currentChapter = getCurrentChapterIndex();
-  
-  const chapterName = novelState.chapters[novelState.currentChapter]?.name || '未知章节';
-  const pageInfo = `[${novelState.currentPage + 1}/${novelState.totalPages}]`;
-  
-  statusBarItem.text = `$(book) ${pageContent} ${pageInfo}`;
-  statusBarItem.tooltip = `${chapterName}\n页码: ${novelState.currentPage + 1}/${novelState.totalPages}\n点击选择章节`;
+  const chapterName = currentChapter ? currentChapter.name : '未知';
+
+  statusBarItem.text = `$(book) ${pageContent}  [${currentPageDisplay}/${totalPagesDisplay}]`;
+  statusBarItem.tooltip = `${chapterName}\n进度: ${(novelState.currentPos / novelState.content.length * 100).toFixed(2)}%`;
   statusBarItem.show();
 }
 
@@ -282,38 +276,21 @@ function updateStatusBar() {
  * 下一页
  */
 function nextPage() {
-  // 关键：隐藏状态下不允许翻页
-  if (!novelState.isVisible) {
-    return;
-  }
+  if (!novelState.isVisible || !novelState.content) return;
   
-  if (!novelState.content) {
-    return;
-  }
-  
-  if (novelState.currentPage < novelState.totalPages - 1) {
-    novelState.currentPage++;
-    updateStatusBar();
-  }
+  // 简单的加法，不再受限于整页倍数
+  novelState.currentPos += novelState.charsPerPage;
+  updateStatusBar();
 }
 
 /**
  * 上一页
  */
 function prevPage() {
-  // 关键：隐藏状态下不允许翻页
-  if (!novelState.isVisible) {
-    return;
-  }
+  if (!novelState.isVisible || !novelState.content) return;
   
-  if (!novelState.content) {
-    return;
-  }
-  
-  if (novelState.currentPage > 0) {
-    novelState.currentPage--;
-    updateStatusBar();
-  }
+  novelState.currentPos -= novelState.charsPerPage;
+  updateStatusBar();
 }
 
 /**
@@ -335,30 +312,37 @@ function hideText() {
 /**
  * 选择章节
  */
+/**
+ * 选择章节
+ */
 async function selectChapter() {
-  if (!novelState.content || novelState.chapters.length === 0) {
-    return;
-  }
-  
-  // 创建章节列表
-  const items = novelState.chapters.map((chapter, index) => {
-    const startPage = Math.floor(chapter.startPos / novelState.charsPerPage) + 1;
-    return {
-      label: chapter.name,
-      description: `第 ${startPage} 页开始`,
-      index: index
-    };
-  });
-  
+  if (!novelState.content || novelState.chapters.length === 0) return;
+
+  const items = novelState.chapters.map((chapter, index) => ({
+    label: chapter.name,
+    description: `进度: ${Math.floor(chapter.startPos / novelState.content.length * 100)}%`,
+    index: index
+  }));
+
   const selected = await vscode.window.showQuickPick(items, {
-    placeHolder: '选择要跳转的章节'
+    placeHolder: '跳转到章节'
   });
-  
+
   if (selected) {
-    // 跳转到该章节的第一页
-    novelState.currentPage = Math.floor(novelState.chapters[selected.index].startPos / novelState.charsPerPage);
-    novelState.currentChapter = selected.index;
-    novelState.isVisible = true; // 跳转后自动显示
+    const chapter = novelState.chapters[selected.index];
+    
+    // 核心修复：直接设置到章节的起始位置
+    novelState.currentPos = chapter.startPos;
+    
+    // 简单的优化：如果章节开头全是换行符，跳过它们
+    while (
+      novelState.currentPos < novelState.content.length && 
+      /\s/.test(novelState.content[novelState.currentPos])
+    ) {
+      novelState.currentPos++;
+    }
+
+    novelState.isVisible = true;
     updateStatusBar();
   }
 }
