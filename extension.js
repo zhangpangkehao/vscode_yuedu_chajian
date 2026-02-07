@@ -267,7 +267,7 @@ function updateStatusBar() {
   const pageContent = getCurrentPageContent();
   const chapterName = currentChapter ? currentChapter.name : '未知';
 
-  statusBarItem.text = `$(book) ${pageContent}  [${currentPageDisplay}/${totalPagesDisplay}]`;
+  statusBarItem.text = `${pageContent}`;
   statusBarItem.tooltip = `${chapterName}\n进度: ${(novelState.currentPos / novelState.content.length * 100).toFixed(2)}%`;
   statusBarItem.show();
 }
