@@ -32,8 +32,8 @@
         },
         "novelReader.chapterRegex": {
           "type": "string",
-          "default": "^第[0-9一二三四五六七八九十百千]+[章回节].*$",
-          "description": "章节标题的正则表达式（用于解析目录）"
+          "default": "^\\s*第[0-9一二三四五六七八九十百千零]+[章回节].*$",
+          "description": "章节标题的正则表达式（用于解析目录，默认支持带前导空白的装饰型标题）"
         }
       }
     },
@@ -66,13 +66,13 @@
     "keybindings": [
       {
         "command": "novelReader.nextPage",
-        "key": "ctrl+alt+right",
-        "mac": "cmd+alt+right"
+        "key": "ctrl+left",
+        "mac": "cmd+left"
       },
       {
         "command": "novelReader.prevPage",
-        "key": "ctrl+alt+left",
-        "mac": "cmd+alt+left"
+        "key": "ctrl+down",
+        "mac": "cmd+down"
       },
       {
         "command": "novelReader.show",
@@ -81,8 +81,8 @@
       },
       {
         "command": "novelReader.hide",
-        "key": "ctrl+alt+h",
-        "mac": "cmd+alt+h"
+        "key": "ctrl+right",
+        "mac": "cmd+right"
       },
       {
         "command": "novelReader.selectChapter",

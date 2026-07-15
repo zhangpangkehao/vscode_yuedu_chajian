@@ -145,44 +145,67 @@ function loadNovel(filePath) {
  */
 function parseChapters() {
   const config = vscode.workspace.getConfiguration('novelReader');
-  const chapterRegexStr = config.get('chapterRegex', '^\\s*第[0-9一二三四五六七八九十百千]+[章回节].*$');
+  const chapterRegexStr = config.get('chapterRegex', '^\\s*第[0-9一二三四五六七八九十百千零]+[章回节].*$');
   
   try {
     // 必须加上 'g' 标志进行全局匹配
     const chapterRegex = new RegExp(chapterRegexStr, 'gm');
-    novelState.chapters = [];
+    const rawMatches = [];
     
     let match;
     while ((match = chapterRegex.exec(novelState.content)) !== null) {
-      // match.index 是正则匹配到的开始位置（即章节标题的开始）
-      // match[0] 是匹配到的标题文本
-      
-      const titleStart = match.index;
-      const titleLength = match[0].length;
-      
-      // 我们希望跳转后直接看正文，所以位置应该是：标题开始 + 标题长 + 换行符(通常1-2个)
-      // 简单的做法是直接定位到标题结束，后续渲染会处理空格
-      let contentStart = titleStart + titleLength;
-      
-      // 记录章节
-      if (novelState.chapters.length > 0) {
-        // 更新上一章的结束位置
-        novelState.chapters[novelState.chapters.length - 1].endPos = titleStart;
-      }
-      
-      novelState.chapters.push({
-        name: match[0].trim(),
-        startPos: contentStart, // 这里记录的是标题后的位置
-        endPos: novelState.content.length // 默认为全文末尾
+      rawMatches.push({
+        title: match[0].trim(),
+        titleEnd: match.index + match[0].length,
+        matchIndex: match.index
       });
     }
-
+    
+    // 去重：合并"装饰版标题 + 纯文本版标题"的重复对
+    // 222.txt 中部分章节格式如下：
+    //   ============================================================
+    //     第1097章 照片能辟邪！（求全订！）   ← 装饰版（带前导空白）
+    //   ============================================================
+    //   第1097章 照片能辟邪！（求全订！）     ← 纯文本版
+    // 两个匹配标题相同且距离很近时，跳过装饰版，保留纯文本版的内容起点
+    novelState.chapters = [];
+    let i = 0;
+    while (i < rawMatches.length) {
+      const current = rawMatches[i];
+      const next = rawMatches[i + 1];
+      
+      if (next && 
+          current.title === next.title && 
+          next.matchIndex - current.matchIndex < 200) {
+        // 装饰版 + 纯文本版：内容从纯文本版标题之后开始
+        novelState.chapters.push({
+          name: current.title,
+          startPos: next.titleEnd,
+          blockStart: current.matchIndex
+        });
+        i += 2;
+      } else {
+        novelState.chapters.push({
+          name: current.title,
+          startPos: current.titleEnd,
+          blockStart: current.matchIndex
+        });
+        i += 1;
+      }
+    }
+    
+    // 设置每章的结束位置为下一章的 blockStart（避免装饰块混入上一章末尾）
+    for (let j = 0; j < novelState.chapters.length; j++) {
+      if (j < novelState.chapters.length - 1) {
+        novelState.chapters[j].endPos = novelState.chapters[j + 1].blockStart;
+      } else {
+        novelState.chapters[j].endPos = novelState.content.length;
+      }
+    }
+    
     // 兜底：如果没有章节
     if (novelState.chapters.length === 0) {
       novelState.chapters.push({ name: '全文', startPos: 0, endPos: novelState.content.length });
-    } else {
-      // 修正最后一章结束位置
-      novelState.chapters[novelState.chapters.length - 1].endPos = novelState.content.length;
     }
     
   } catch (error) {
